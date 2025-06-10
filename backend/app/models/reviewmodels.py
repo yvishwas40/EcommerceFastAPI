@@ -1,6 +1,5 @@
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql.schema import ForeignKey
 from config.database import Base
 from datetime import datetime
 
@@ -8,15 +7,19 @@ from datetime import datetime
 class ReviewModel(Base):
     __tablename__ = "review"
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String(200))
-    comment = Column(String(255))
-    rating = Column(Integer)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    comment = Column(String(255), nullable=False)
+    rating = Column(Integer, nullable=False)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="reviews")
 
-    product_id = Column(Integer, ForeignKey("product.id"))
+    product_id = Column(Integer, ForeignKey("product.id"), nullable=False)
     product = relationship("ProductModel", back_populates="reviews_user")
 
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Review by {self.name} - Rating: {self.rating}>"

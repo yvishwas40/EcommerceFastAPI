@@ -1,7 +1,5 @@
 import uvicorn
 
-
-
 from fastapi import FastAPI
 from config.database import engine
 from config.database import Base

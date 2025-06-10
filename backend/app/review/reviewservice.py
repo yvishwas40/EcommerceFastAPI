@@ -1,12 +1,12 @@
-from fastapi import Depends
-from models.productmodels import ProductModel
-
-from config.token import get_currentUser
-from models.reviewmodels import ReviewModel
+from fastapi import Depends, HTTPException, status
 from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from models.productmodels import ProductModel
+from models.reviewmodels import ReviewModel
 from models.usermodels import User
 from config.database import get_db
-from sqlalchemy.orm import Session
+from config.token import get_currentUser
 from dto.reviewschema import ReviewCreate
 
 
@@ -21,28 +21,26 @@ class ReviewService:
         current_user: User = Depends(get_currentUser),
     ):
         try:
-            # Ambil produk yang akan direview
+            # Fetch the product to review
             product = db.query(ProductModel).filter(ProductModel.id == productId).first()
-
             if not product:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Produk tidak ditemukan.",
                 )
 
-            # Cek apakah pengguna sudah memberikan ulasan sebelumnya untuk produk ini
+            # Check if user has already reviewed this product
             existing_review = db.query(ReviewModel).filter(
                 ReviewModel.user_id == current_user.id,
                 ReviewModel.product_id == productId
             ).first()
-
             if existing_review:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Anda sudah memberikan ulasan untuk produk ini.",
                 )
 
-            # Buat ulasan baru
+            # Create new review
             review_new = ReviewModel(
                 name=current_user.name,
                 user_id=current_user.id,
@@ -51,37 +49,27 @@ class ReviewService:
                 product_id=productId
             )
 
-            # Tambahkan ulasan ke database
             db.add(review_new)
             db.commit()
 
-            # Hitung total rating dan jumlah ulasan saat ini untuk produk
+            # Recalculate the average rating for the product
             total_rating, total_reviews = db.query(
                 func.sum(ReviewModel.rating), func.count(ReviewModel.id)
             ).filter(
                 ReviewModel.product_id == productId
             ).first()
 
-            if total_rating is None:
-                total_rating = 0
-            if total_reviews is None:
-                total_reviews = 0
+            if total_reviews == 0 or total_rating is None:
+                product.rating = 0
+            else:
+                product.rating = int(total_rating / total_reviews)
 
-            # Hitung rating rata-rata saat ini
-            current_average_rating = total_rating / total_reviews
-
-            # Kurangkan rating ulasan baru dari total rating saat ini
-            total_rating -= request.rating
-            total_reviews -= 1
-
-            # Hitung rating rata-rata yang baru
-            new_average_rating = current_average_rating if total_reviews == 0 else total_rating / total_reviews
-
-            # Perbarui rating produk di database dengan rating rata-rata yang baru
-            product.rating = int(new_average_rating)
             db.commit()
+
+            return review_new  # Optionally return the newly created review
+
         except Exception as e:
-            db.rollback()  # Batalkan transaksi jika terjadi kesalahan
+            db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Terjadi kesalahan saat menambahkan ulasan.",
